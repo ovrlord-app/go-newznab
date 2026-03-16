@@ -146,6 +146,14 @@ func (c Client) SearchWithQuery(categories []int, query string, searchType strin
 	})
 }
 
+// FetchRecent returns the most recent NZBs for the given categories
+func (c Client) FetchRecent(categories []int, searchType string) (NZBS []NZB, total int, offset int, err error) {
+	return c.fetch(url.Values{
+		"cat": c.splitCats(categories),
+		"t":   []string{searchType},
+	})
+}
+
 // LoadRSSFeed returns up to <num> of the most recent NZBs of the given categories.
 func (c Client) LoadRSSFeed(categories []int, num int) ([]NZB, error) {
 	return c.rss(url.Values{
@@ -209,10 +217,17 @@ func (c Client) splitCats(cats []int) []string {
 func (c Client) rss(vals url.Values) ([]NZB, error) {
 	vals.Set("r", c.apikey)
 	vals.Set("i", strconv.Itoa(c.apiUserID))
-	return c.process(vals, rssPath)
+	nzbs, _, _, err := c.process(vals, rssPath)
+	return nzbs, err
 }
 
 func (c Client) search(vals url.Values) ([]NZB, error) {
+	vals.Set("apikey", c.apikey)
+	nzbs, _, _, err := c.process(vals, apiPath)
+	return nzbs, err
+}
+
+func (c Client) fetch(vals url.Values) ([]NZB, int, int, error) {
 	vals.Set("apikey", c.apikey)
 	return c.process(vals, apiPath)
 }
@@ -243,20 +258,24 @@ func (c Client) details(vals url.Values) (Details, error) {
 	return dResp, nil
 }
 
-func (c Client) process(vals url.Values, path string) ([]NZB, error) {
+func (c Client) process(vals url.Values, path string) ([]NZB, int, int, error) {
 	var nzbs []NZB
+	var offset int
+	var total int
 	resp, err := c.getURL(c.buildURL(vals, path))
 	if err != nil {
-		return nzbs, err
+		return nzbs, offset, total, err
 	}
 	var feed SearchResponse
 	err = xml.Unmarshal(resp, &feed)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal xml feed: %w", err)
+		return nil, total, offset, fmt.Errorf("failed to unmarshal xml feed: %w", err)
 	}
 	if feed.ErrorCode != 0 {
-		return nil, fmt.Errorf("newznab api error %d: %s", feed.ErrorCode, feed.ErrorDesc)
+		return nil, total, offset, fmt.Errorf("newznab api error %d: %s", feed.ErrorCode, feed.ErrorDesc)
 	}
+	offset = feed.Channel.Response.Offset
+	total = feed.Channel.Response.Total
 	for _, gotNZB := range feed.Channel.NZBs {
 		nzb := NZB{
 			Title:          gotNZB.Title,
@@ -354,7 +373,7 @@ func (c Client) process(vals url.Values, path string) ([]NZB, error) {
 		}
 		nzbs = append(nzbs, nzb)
 	}
-	return nzbs, nil
+	return nzbs, total, offset, nil
 }
 
 // PopulateComments fills in the Comments for the given NZB

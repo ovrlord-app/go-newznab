@@ -60,7 +60,7 @@ func TestUsenetCrawlerClient(t *testing.T) {
 		reg := regexp.MustCompile(`\W`)
 		fixedPath := reg.ReplaceAllString(r.URL.RawQuery, "_")
 
-		if r.URL.Query()["t"][0] == "get" {
+		if r.URL.Query()["t"] != nil && r.URL.Query()["t"][0] == "get" {
 			// Fetch nzb
 			nzbID := r.URL.Query()["id"][0]
 			filePath := fmt.Sprintf("./fixtures/nzbs/%v.nzb", nzbID)
@@ -199,6 +199,18 @@ func TestUsenetCrawlerClient(t *testing.T) {
 				require.Equal(t, float32(8.4), results[0].IMDBScore)
 				require.Equal(t, "https://dognzb.cr/content/covers/movies/thumbs/364569.jpg", results[0].CoverURL)
 			})
+		})
+
+		t.Run("single category Fetch Recent", func(t *testing.T) {
+			cats := []int{CategoryTVSD}
+			results, total, offset, err := client.FetchRecent(cats, "tvsearch")
+			require.NoError(t, err)
+			require.NotEmpty(t, results, "expected results")
+
+			require.Equal(t, "85db1aa1d0f2df502d8f87a5f1f989c6", results[0].ID)
+			require.Equal(t, "Bones.S10E22.DVDRip.X264-REWARD", results[0].Title)
+			require.Equal(t, 72, total)
+			require.Equal(t, 0, offset)
 		})
 
 		t.Run("recent items via RSS", func(t *testing.T) {
